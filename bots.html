@@ -1,0 +1,266 @@
+<canvas id="canvas" width="2000px" height="2000px"></canvas>
+<style>
+  body { background: #000; padding: 3px; position: fixed;}
+</style>
+
+<script>
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+  
+  // canvas variables
+  var size = 10;
+  var botCount = 99;
+  
+  // variables
+  var collisionData = {};
+  var games = {
+    "default": {
+      "players": {}
+    }
+  };
+  var playerID = 0;
+  
+  // player variables
+  var createPlayer = function(room, x, y, type) {
+    playerID++;
+    let newPlayer = {"x": x, 
+                  "y": y,
+                  "hp": 100,
+                  "type": type,
+                  "lifetime": 0,
+                  "id": playerID};
+    games[room].players[playerID] = newPlayer;
+  }
+  
+var block = function(x, y, color) {
+  collisionData[[x,y]] = 1;
+  ctx.fillStyle = color;
+  ctx.fillRect(x * size, y * size, size, size);
+};
+  
+var display = function(x, y, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x * size, y * size, size, size);
+};
+  
+// generate random terrain
+for (let i = 0; i < 500; i++) {
+  let x = Math.round(Math.random() * 60);
+  let y = Math.round(Math.random() * 60);
+  block(x,y)
+}
+  
+// summon a bot randomly on map
+for (let b = 0; b < botCount; b++) {
+let summon = true;
+while (summon) {
+  let x = Math.round(Math.random() * 60);
+  let y = Math.round(Math.random() * 60);
+  if (collisionData[[x,y]] !== 1) {
+    createPlayer("default", x, y, "bot")
+    summon = false;
+  }
+ }
+}
+  
+var canvasTick = setInterval(() => {
+  // display
+  ctx.clearRect(0,0, canvas.width, canvas.height);
+  Object.keys(collisionData).forEach(function(key) {
+    let test = key.split(",");
+    block(test[0], test[1], "#585858")
+  });
+  
+  let ply = games.default.players;
+  Object.keys(ply).forEach(function(key) {
+    ctx.fillStyle = '#ff5f5f';
+    let x = ply[key].x;
+    let y = ply[key].y;
+    ctx.fillRect(x * size, y * size, size, size);
+  });
+},
+  50
+)
+  
+  
+// iteration through bots : the actual code
+var startPathfind = function(playerOBJ, xDest, yDest) {
+  if (collisionData[[Math.round(xDest), Math.round(yDest)]] !== 1) {
+    playerOBJ.pathfinding = true;
+    playerOBJ.destination = [Math.round(xDest), Math.round(yDest)];
+    playerOBJ.distanceMap = {};
+    playerOBJ.growthMap = [[Math.round(xDest),Math.round(yDest)]];
+    playerOBJ.iterations = 0;
+    playerOBJ.pathfindTime = 350;
+  }
+};
+  
+var checkPosition = function(playerOBJ, x, y, growthArray) {
+  if (!(playerOBJ.distanceMap[[x, y]]) && collisionData[[x, y]] !== 1) {
+    playerOBJ.distanceMap[[x, y]] = playerOBJ.iterations + 1;
+    growthArray.push([x, y]);
+    if (Math.round(playerOBJ.x) == x && Math.round(playerOBJ.y) == y) {
+      playerOBJ.pathfinding = false;
+      playerOBJ.pathfindStatus = "done";
+    }
+  }
+};
+  
+var iteratePathfind = function(playerOBJ) {
+  let newGrowth = [];
+  playerOBJ.growthMap.forEach(function (item, index) {
+    playerOBJ.distanceMap[item] = playerOBJ.iterations;
+    checkPosition(playerOBJ, item[0] + 1, item[1], newGrowth);
+    checkPosition(playerOBJ, item[0] - 1, item[1], newGrowth);
+    checkPosition(playerOBJ, item[0], item[1] + 1, newGrowth);
+    checkPosition(playerOBJ, item[0], item[1] - 1, newGrowth);
+    display(item[0], item[1], "rgba(113,171,243,.53)");
+  });
+  playerOBJ.growthMap = newGrowth;
+};
+
+var gameTick = setInterval(() => {
+  
+  let bot = games.default.players;
+  Object.keys(bot).forEach(function(key) {
+    if (bot[key].type = "bot") {
+      let botOBJ = bot[key];
+      
+      // initialize variables for bots that are spawned
+      if (botOBJ.lifetime == 0) {
+        botOBJ.angle = Math.random() * 360;
+        botOBJ.status = "idle";
+        botOBJ.moving = true;
+        botOBJ.moveDuration = Math.random() * 50;
+        botOBJ.xVelocity = 0;
+        botOBJ.yVelocity = 0;
+        botOBJ.initialX = botOBJ.x;
+        botOBJ.initialY = botOBJ.y;
+        botOBJ.pathfinding = false;
+        botOBJ.pathfindStatus = "none";
+      }
+      botOBJ.lifetime++;
+
+      // move bot position according to angle if moving
+      if (botOBJ.moving) {
+        botOBJ.moveDuration--;
+        if (botOBJ.moveDuration < 0) {
+          botOBJ.moving = false;
+        }
+        botOBJ.xVelocity = Math.sin(botOBJ.angle * Math.PI / 180) / 4;
+        botOBJ.yVelocity = Math.cos(botOBJ.angle * Math.PI / 180) / 4;
+        botOBJ.x += Math.sin(botOBJ.angle * Math.PI / 180) / 4;
+        botOBJ.y += Math.cos(botOBJ.angle * Math.PI / 180) / 4;
+      }
+      
+      // give rounded coordinates
+      let x = Math.round(botOBJ.x);
+      let y = Math.round(botOBJ.y);
+      
+      // basic physics : left side
+      if (botOBJ.xVelocity < 0 && collisionData[[x - 1, y]]) {
+        if (botOBJ.x - 0.5 < x - 0.5) {
+          botOBJ.x = x;
+        }
+      }
+      
+      // basic physics : right side
+      if (botOBJ.xVelocity > 0 && collisionData[[x + 1, y]]) {
+        if (botOBJ.x + 0.5 > x + 0.5) {
+          botOBJ.x = x;
+        }
+      }
+      
+      // basic physics : bottom side
+      if (botOBJ.yVelocity > 0 && collisionData[[x, y + 1]]) {
+        if (botOBJ.y + 0.5 > y + 0.5) {
+          botOBJ.y = y;
+        }
+      }
+      
+      // basic physics : top side
+      if (botOBJ.yVelocity < 0 && collisionData[[x, y - 1]]) {
+        if (botOBJ.y - 0.5 < y - 0.5) {
+          botOBJ.y = y;
+        }
+      }
+      
+      // idle behavior (in lobby)
+      if (botOBJ.status == "idle" && !botOBJ.pathfinding) {
+        
+        // randomly start moving, turn to random direction
+        if (Math.random() * 20 < 1 && botOBJ.moving == false) {
+          botOBJ.angle = Math.random() * 360;
+          botOBJ.moveDuration = Math.random() * 75;
+          botOBJ.moving = true;
+        }
+        
+        // pick a random nearby destination to go to
+        if (Math.random() * 10 < 1 && botOBJ.pathfindStatus == "none") {
+          let xDest = botOBJ.x + (Math.random() - 0.5) * 20;
+          let yDest = botOBJ.x + (Math.random() - 0.5) * 20;
+        startPathfind(botOBJ, xDest, yDest);
+        }
+        
+      }
+    
+    // pathfinding method
+      if (botOBJ.pathfinding) {
+        botOBJ.iterations++;
+        iteratePathfind(botOBJ);
+        if (botOBJ.iterations > 75) {
+          botOBJ.pathfinding = false;
+          botOBJ.pathfindStatus = "none";
+        }
+      }
+      
+    // move according to pathfind
+      if (botOBJ.pathfindStatus == "done") {
+        
+        // check handler
+        botOBJ.moving = true;
+        botOBJ.moveDuration = 5;
+        let checkDistance = function(x, y, high) {
+          if (botOBJ.distanceMap[[x, y]] !== undefined) {
+            if (botOBJ.distanceMap[[x, y]] < high) {
+              botOBJ.angle = Math.atan2(x - botOBJ.x, y - botOBJ.y) * 180 / Math.PI;
+              return botOBJ.distanceMap[[x, y]];
+            }
+          }
+          return high;
+        };
+        
+        // find angle to go to
+        let highest = botOBJ.distanceMap[[x, y]];
+        let angle = Math.random() * 360;
+        highest = checkDistance(x - 1, y - 1, highest);
+        highest = checkDistance(x + 1, y - 1, highest);
+        highest = checkDistance(x - 1, y + 1, highest);
+        highest = checkDistance(x + 1, y + 1, highest);
+        highest = checkDistance(x - 1, y, highest);
+        highest = checkDistance(x + 1, y, highest);
+        highest = checkDistance(x, y + 1, highest);
+        highest = checkDistance(x, y - 1, highest);
+        
+        // check if bot is at destination
+        if (x == botOBJ.destination[0] && y == botOBJ.destination[1]) {
+          botOBJ.pathfindStatus = "none";
+        }
+        
+        // if bot takes too long to reach destination, cancel it
+        botOBJ.pathfindTime--;
+        if (botOBJ.pathfindTime < 0) {
+          botOBJ.pathfindStatus = "none";
+        }
+        
+        display(botOBJ.destination[0], botOBJ.destination[1], "#3aff3a");
+      }
+
+    }
+  });
+},
+  50
+)
+
+</script> 
